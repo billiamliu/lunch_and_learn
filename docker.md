@@ -1,5 +1,5 @@
 # Getting Started With Docker & Docker-Compose
-*Credit*
+### Credit
 This tutorial is largely copied from [Digital Ocean's article](https://www.digitalocean.com/community/tutorials/how-to-configure-a-continuous-integration-testing-environment-with-docker-and-docker-compose-on-ubuntu-14-04), based on [Docker's Getting Started Tutorial](https://www.digitalocean.com/community/tutorials/docker-explained-how-to-containerize-python-web-applications)
 
 ## Objective
@@ -25,10 +25,7 @@ visits = 0
 def hello():
     global visits
     visits += 1
-    html = "<h3>Hello World!</h3>" \
-           "<b>Visits:</b> {visits}" \
-           "<br/>"
-    return html.format(visits=visits)
+    return 'Hello World! I have been seen {} times.\n'.format(visits)
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=3000)
@@ -42,9 +39,9 @@ Run it:
 $ pip install -r requirements.txt
 $ python app.py
 $ curl http://127.0.0.1:3000
-<h3>Hello World!</h3><b>Visits:</b> 1<br/>
+Hello World! I have been seen 1 times.
 $ curl http://127.0.0.1:3000
-<h3>Hello World!</h3><b>Visits:</b> 2<br/>
+Hello World! I have been seen 2 times.
 ```
 
 _Did you know, `pip` is recursive acronym for `pip installs python`?_
@@ -150,3 +147,54 @@ $ docker rmi $(docker images -q)
 ```
 
 ## Step 3 Compose All The Things
+Assuming our `hello world` isn't a loner, let's give it some dependencies to play with. Global variables are bad; it's only natural to spin up a redis db to keep track of a visitor count!
+
+Let's modify our python code and hook it up to redis.
+```python
+from flask import Flask
+from redis import Redis
+
+app = Flask(__name__)
+redis = Redis(host='redis')
+
+@app.route('/')
+def hello():
+    count = redis.incr('hits')
+    return 'Hello World! I have been seen {} times.\n'.format(count)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=3000)
+```
+```
+# requirements.txt
+flask
+redis
+```
+
+Since there are so many readily available docker images, we'll skip building a redis container and use a readily made image hosted on Docker, when we compose our containers.... now!
+
+`docker-compose` needs a manifest, touch one:
+```yml
+# composition.yml
+app:
+  build: .
+  dockerfile: Dockerfile
+  links:
+    - redis
+  ports:
+    - "3210:3000"
+redis:
+  image: redis
+```
+
+*Done*
+
+That's it.
+
+In our manifest we declared a redis image, docker-compose will fetch that image and spin in up in a container for us. `links` hooked up the containers so we don't manually have to. Let's try it out.
+```bash
+$ docker-compose -f composition.yml build
+$ docker-compose -f composition.yml up
+```
+
+
