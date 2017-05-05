@@ -197,4 +197,206 @@ $ docker-compose -f composition.yml build
 $ docker-compose -f composition.yml up
 ```
 
+In a new terminal:
+```bash
+$ curl http://127.0.0.1:3210
+Hello World! I have been seen 1 times.
+$ curl http://127.0.0.1:3210
+Hello World! I have been seen 2 times.
+```
 
+## Step 3.pro_tip Shortcuts
+
+Run `docker-compose` as a daemon:
+```bash
+$ docker-compose -f composition.yml up -d
+```
+
+View running compositions:
+```bash
+$ docker-compose ps
+CONTAINER ID        IMAGE               COMMAND                  CREATED              STATUS              PORTS                    NAMES
+36af836ad23f        helloworld_app      "python app.py"          About a minute ago   Up About a minute   0.0.0.0:3210->3000/tcp   helloworld_app_1
+b52547dde868        redis               "docker-entrypoint..."   About a minute ago   Up About a minute   6379/tcp                 helloworld_redis_1
+```
+
+Shut down:
+```bash
+$ docker-compose -f composition.yml down
+```
+
+By convention `docker-compose` looks for a file `docker-compose.yml`, so if we name our `composition.yml` to that, we can run it from the current directory without having to specify the file:
+```bash
+$ docker-compose build
+$ docker-compose up
+```
+
+Similar to `docker`'s `--name` for specifying a container name for easy reference, we can specify a compose project name. By default it uses the dirname + container + number (i.e. helloworld_app_1).
+```bash
+$ docker-compose -p yoyo build
+$ docker-compose -p yoyo up
+$ docker-compose -p yoyo down
+```
+
+## Step 3.pro_tip Useful Commands
+
+While the composition of containers are running, you can interact with them.
+
+Getting the container IP:
+```bash
+$ docker inspect --format '{{ .Networkettings.IPAddress }}' helloworld_app_1
+172.17.0.3
+```
+
+See logs:
+```bash
+$ docker logs helloworld_app_1
+```
+
+Start a bash session or run any command:
+`-it` is for `interactive` and `tty`
+```bash
+$ docker exec -it helloworld_app_1 bash
+```
+
+## Step 4 Use The Composition From Another Composition
+
+Assuming we are spinning up a project that requires our existing composition, perhaps a test, or a consumer, etc., the projects will need to talk to each other. In `docker-compose` we can specify another project as its external link.
+
+First, let's create a test:
+```bash
+# test.sh
+sleep 5
+if curl app:3000 | grep -q 'Hello World'
+then
+  echo "Tests passed!"
+  exit 0
+else
+  echo "Tests failed!"
+  exit 1
+fi
+```
+
+_If we specify port 80 in our app, we can simply use `app` instead of `app:3000`_
+
+And then build artifacts:
+```
+# Dockerfile.test
+FROM ubuntu:trusty
+
+RUN apt-get update && apt-get install -yq curl && apt-get clean
+
+WORKDIR /app
+
+ADD test.sh /app/test.sh
+
+CMD ["bash", "test.sh"]
+```
+```
+# docker-compose.test.yml
+test:
+  build: .
+  dockerfile: Dockerfile.test
+  links:
+    - app
+app:
+  build: .
+  dockerfile: Dockerfile
+  links:
+    - redis
+redis:
+  image: redis
+```
+
+Build & Run
+```bash
+$ docker-compose -f docker-compose.test.yml -p test build
+...
+$ docker-compose -f docker-compose.test.yml -p test up -d
+```
+
+Did our test pass?
+Our test container did an assertion and then exited, to inspect its log:
+```bash
+$ docker logs ci_test_1
+Tests passed!
+```
+
+We also specified the script to `exit 0`, so that a CI framework can pick it up as ok.
+
+But the `app` and `redis` containers are still running, let's shut them down.
+```bash
+$ docker-compose -p ci down
+```
+
+## Step 5 Environment Variables
+
+Just for practice, let's see how env vars are passed into the builds. This can be useful for configuring postgres db names, configure ports, etc.
+
+There are at least two ways to do it in our set up - via `Dockerfile` and via `docker-compose.yml`.
+
+Edit `Dockerfile` to include a `APP_PORT`:
+```
+FROM python:2.7-slim
+ADD . /code
+WORKDIR /code
+RUN pip install -r requirements.txt
+ENV APP_PORT 3000
+EXPOSE 3000
+CMD ["python", "app.py"]
+```
+
+Make the following changes to `app.py`:
+```python
+import os
+app.run(host="0.0.0.0", port=int(os.environ['APP_PORT']))
+```
+
+Your file should look like
+```python
+from flask import Flask
+from redis import Redis
+import os
+
+app = Flask(__name__)
+redis = Redis(host='redis')
+
+@app.route('/')
+def hello():
+    count = redis.incr('hits')
+    return 'Hello World! I have been seen {} times.\n'.format(count)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=int(os.environ['APP_PORT']))
+```
+
+Modify `docker-compose.test.yml`
+```
+test:
+  build: .
+  dockerfile: Dockerfile.test
+  environment:
+    - TEST_PORT=3000
+  links:
+    - app
+app:
+  build: .
+  dockerfile: Dockerfile
+  links:
+    - redis
+redis:
+  image: redis
+```
+
+Then make the change to `test.sh`:
+```bash
+sleep 5
+if curl app:$TEST_PORT | grep -q 'Hello World'
+then
+  echo "Tests passed!"
+  exit 0
+else
+  echo "Tests failed!"
+  exit 1
+fi
+```
