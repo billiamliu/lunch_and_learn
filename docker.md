@@ -400,3 +400,28 @@ else
   exit 1
 fi
 ```
+
+Build an run for fun and profit:
+```bash
+$ docker-compose -p ci build
+...
+$ docker-compose -p ci run
+```
+
+## Step 6 Delete All The Things
+To quickly remove all stopped docker containers:
+```bash
+$ docker container prune
+```
+
+To quickly remove all intermediate `<none>:<none>` images docker built (TL;DR zombie images):
+(more references here)[http://www.projectatomic.io/blog/2015/07/what-are-docker-none-none-images/]
+```bash
+$ docker image prune
+```
+
+Normally I'd like to keep the base images such as `redis`, `python`, etc. But feeling lazy today, so let's `rm -rf` all the images too.
+`-f` for force, `-a` to specify all, not just dangling/zombie ones
+```bash
+$ docker image prune -af
+```
