@@ -415,7 +415,7 @@ $ docker container prune
 ```
 
 To quickly remove all intermediate `<none>:<none>` images docker built (TL;DR zombie images):
-(more references here)[http://www.projectatomic.io/blog/2015/07/what-are-docker-none-none-images/]
+[more references here](http://www.projectatomic.io/blog/2015/07/what-are-docker-none-none-images/)
 ```bash
 $ docker image prune
 ```
